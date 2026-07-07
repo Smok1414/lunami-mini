@@ -1,10 +1,16 @@
 <div align="center">
 
-# 🌙 Lunami-Mini
+# 🌙 Lunami Mini
 
-**A large language model, built from scratch — not fine-tuned, not wrapped.**
+### A 165M parameter language model trained completely from scratch.
 
-*Every tensor shape, every gradient, every tokenizer merge — implemented, validated, and debugged by hand.*
+🚀 **From-scratch pretraining** — no fine-tuning, no wrapper around someone else's weights
+🧠 **165M active parameters** (293M total — sparse Mixture-of-Experts)
+⚡ **Hybrid Mamba-2 + GQA + MoE** — state-space speed, attention where it counts
+📚 **English + Code** — narrow on purpose, strong where it matters
+🔥 **FlashAttention-2** + fused SDPA
+🐍 **Pure PyTorch** — every tensor shape hand-written, every bug hand-caught
+📄 **MIT License** — fully open, right down to the tokenizer
 
 [![Architecture](https://img.shields.io/badge/architecture-Mamba--2%20%2B%20GQA%20%2B%20MoE-8A2BE2)](#architecture)
 [![Params](https://img.shields.io/badge/params-165M%20active%20%2F%20293M%20total-orange)](#architecture)
