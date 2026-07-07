@@ -86,6 +86,11 @@ def parse_args() -> argparse.Namespace:
                    help="Копировать каждый чекпойнт сюда (напр. /content/drive/MyDrive/... "
                         "в Colab — сессия там не персистентна, чекпойнты в output_dir пропадут "
                         "при отключении рантайма).")
+    p.add_argument("--micro-batch-size", type=int, default=None,
+                   help="Переопределить micro_batch_size профиля (уменьшить при OOM).")
+    p.add_argument("--grad-accum-steps", type=int, default=None,
+                   help="Переопределить grad_accum_steps профиля (увеличить, если уменьшили "
+                        "micro-batch-size, чтобы сохранить тот же effective batch).")
     return p.parse_args()
 
 
@@ -430,6 +435,12 @@ def main() -> int:
         full_cfg.train.use_torch_compile = args.compile
     if args.backup_dir is not None:
         full_cfg.train.backup_dir = args.backup_dir
+    if args.micro_batch_size is not None:
+        full_cfg.train.micro_batch_size = args.micro_batch_size
+    if args.grad_accum_steps is not None:
+        full_cfg.train.grad_accum_steps = args.grad_accum_steps
+    if args.micro_batch_size is not None or args.grad_accum_steps is not None:
+        full_cfg.train.__post_init__()  # пересчитать effective_batch_size под новые micro/accum
 
     train(full_cfg, args)
     return 0
