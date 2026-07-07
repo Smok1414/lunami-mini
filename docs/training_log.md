@@ -34,3 +34,20 @@ Loss decreases monotonically, gradient norms stay bounded, LR warmup matches its
 **Real training started:** full architecture (165M active), `max_seq_len=2048`, FineWeb-Edu + codeparrot-clean mix, `workhorse` profile (T4, fp16). Measured throughput: **~330 tokens/sec**. Checkpoint at step 30 loaded correctly in `chat.py` and generated text (incoherent, as expected at ~500K tokens of training — see [Samples](../README.md#samples) in the main README).
 
 **Honest number for the day:** at ~330 tok/s, the realistic compute budget available for this project caps out around 90M tokens total — well short of what a 165M-active-parameter model would need for genuinely coherent output. Full reasoning in [roadmap.md](roadmap.md#compute).
+
+**Production run progress** (same config as above, updated as it runs):
+
+| Step | Loss | tok/s | Time |
+|---|---|---|---|
+| 5 | 11.3929 | 331 | 18:40 |
+| 35 | 10.6994 | 328 | 19:05 |
+| 40 | 10.7763 | 328 | 19:09 |
+| 45 | 10.5630 | 329 | 19:13 |
+| 50 | 10.3655 | 327 | 19:18 |
+| 55 | 10.1877 | 328 | 19:22 |
+| 60 | 9.9713 | 328 | 19:26 |
+| 65 | 9.9841 | 328 | 19:30 |
+| 70 | 9.9954 | 328 | 19:34 |
+| 75 | 9.7208 | 328 | 19:38 |
+
+Small non-monotonic bumps (step 40, step 65-70) are normal noise at this effective batch size (8) — the overall trend across 70 steps is a clean decrease. Throughput is flat at ~328 tok/s, matching the earlier measurement almost exactly. Checkpoints saved every 15 steps to `checkpoints/`.

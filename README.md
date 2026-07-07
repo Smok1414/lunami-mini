@@ -58,7 +58,19 @@ Validation run on a T4, context length 2048, single data source (see [docs/train
 | 112 | 9.2447 | ~10,350 |
 | 113 | 9.0698 | ~8,700 |
 
-A separate, longer training run (full data mix — FineWeb-Edu + codeparrot-clean) is in progress; current status is in [docs/training_log.md](docs/training_log.md), updated as it runs.
+**Production run, in progress** — same architecture, full data mix (FineWeb-Edu + codeparrot-clean), T4, `workhorse` profile:
+
+![Loss curve — production run](docs/assets/loss_curve_production.png)
+
+| Step | Loss | Perplexity | tok/s |
+|---|---|---|---|
+| 5 | 11.3929 | ~88,700 | 331 |
+| 35 | 10.6994 | ~44,300 | 328 |
+| 45 | 10.5630 | ~38,700 | 329 |
+| 60 | 9.9713 | ~21,400 | 328 |
+| 75 | 9.7208 | ~16,700 | 328 |
+
+Throughput is holding steady at ~328-331 tok/s; loss is trending down with the normal noise expected at this batch size (effective batch 8). Updated as training continues — see [docs/training_log.md](docs/training_log.md) for the full step-by-step record.
 
 ## Samples
 
