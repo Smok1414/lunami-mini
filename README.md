@@ -28,20 +28,78 @@ Most "build an LLM" side projects stop at the architecture diagram. This one doe
 
 ## Architecture
 
-A hybrid of state-space and attention, with sparse compute on top:
+A hybrid of state-space and attention, with sparse compute on top — 24 layers, repeating `[Mamba-2 ×3 → GQA+MoE ×1]` six times:
 
+```mermaid
+flowchart TB
+    input(["Token IDs"]) --> emb["Token Embedding<br/>vocab = 65,536"]
+    emb --> stack
+
+    subgraph stack [" × 6 "]
+        direction LR
+        m1["Mamba-2"] --> m2["Mamba-2"] --> m3["Mamba-2"] --> att["GQA Attention<br/>+ MoE FFN"]
+    end
+
+    stack --> norm["Final RMSNorm"]
+    norm --> head["LM Head<br/>(tied embedding)"]
+    head --> logits(["Logits<br/>vocab = 65,536"])
+
+    style m1 fill:#8A2BE2,color:#fff,stroke:#5a1a99
+    style m2 fill:#8A2BE2,color:#fff,stroke:#5a1a99
+    style m3 fill:#8A2BE2,color:#fff,stroke:#5a1a99
+    style att fill:#FF8C00,color:#fff,stroke:#b35f00
+    style emb fill:#1f6feb,color:#fff
+    style head fill:#1f6feb,color:#fff
 ```
-token ids
-   │
-   ▼
-┌─────────────────────────────────────────────┐
-│  [ Mamba-2 → Mamba-2 → Mamba-2 → GQA+MoE ]   │  × 6   = 24 layers
-│      75% state-space           25% attention │
-└─────────────────────────────────────────────┘
-   │
-   ▼
-RMSNorm → tied lm_head → logits (vocab 65,536)
+
+<details>
+<summary><b>Inside a Mamba-2 block</b> (18 of 24 layers — click to expand)</summary>
+
+```mermaid
+flowchart TB
+    x["input x"] --> rn["RMSNorm"]
+    rn --> inproj["in_proj<br/>d_model → 2×d_inner"]
+    inproj --> xbranch["x branch"]
+    inproj --> zbranch["z branch (gate)"]
+    xbranch --> conv["Causal Conv1d<br/>kernel=4, depthwise"]
+    conv --> silu["SiLU"]
+    silu --> xproj["x_proj → Δ, B, C"]
+    xproj --> scan["Selective Scan (SSD)<br/>d_state = 64, chunked"]
+    scan --> skip["+ D · x  (skip)"]
+    skip --> gatemul["× SiLU(z)"]
+    zbranch --> gatemul
+    gatemul --> outproj["out_proj<br/>d_inner → d_model"]
+    outproj --> add(("+"))
+    x --> add
+    add --> y["output"]
+
+    style scan fill:#8A2BE2,color:#fff
 ```
+
+</details>
+
+<details>
+<summary><b>Inside a GQA + MoE block</b> (6 of 24 layers — click to expand)</summary>
+
+```mermaid
+flowchart TB
+    x2["input x"] --> rn1["RMSNorm"]
+    rn1 --> gqa["GQA Attention<br/>8 Q heads / 2 KV heads<br/>RoPE + FlashAttention-2"]
+    gqa --> add1(("+"))
+    x2 --> add1
+    add1 --> rn2["RMSNorm"]
+    rn2 --> router["Router: top-2 of 8"]
+    router --> experts["8 × SwiGLU experts<br/>(2 active per token)"]
+    experts --> weighted["weighted sum"]
+    weighted --> add2(("+"))
+    add1 --> add2
+    add2 --> y2["output"]
+
+    style gqa fill:#FF8C00,color:#fff
+    style router fill:#FF8C00,color:#fff
+```
+
+</details>
 
 | Component | Spec | Notes |
 |---|---|---|
