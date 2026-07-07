@@ -141,20 +141,6 @@ v1 is **English + Code only** — 50/50 mix, all sources public, no gated access
 | [Magicoder-OSS-Instruct-75K](https://huggingface.co/datasets/ise-uiuc/Magicoder-OSS-Instruct-75K) | code instruct | 10% |
 | [OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5) | English chat | 10% |
 
-## Hardware profiles
-
-Built for a hybrid Lightning.ai Studios workflow — one flag switches the whole training recipe:
-
-| Profile | GPU | dtype | batch | notes |
-|---|---|---|---|---|
-| `rocket` | A100 40GB | bf16 | 16×2 (eff. 32) | `torch.compile`, no grad-checkpointing |
-| `workhorse` | T4 15GB | fp16 | 2×8 (eff. 16) | GradScaler, gradient checkpointing |
-
-```bash
-python train.py --profile rocket      # A100
-python train.py --profile workhorse   # T4
-```
-
 ## Setup
 
 ```bash
