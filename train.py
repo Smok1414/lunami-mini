@@ -91,6 +91,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--grad-accum-steps", type=int, default=None,
                    help="Переопределить grad_accum_steps профиля (увеличить, если уменьшили "
                         "micro-batch-size, чтобы сохранить тот же effective batch).")
+    p.add_argument("--shuffle-buffer", type=int, default=None,
+                   help="Переопределить DatasetConfig.shuffle_buffer (по умолчанию 10000 — "
+                        "на некоторых огромных HF-шардах (codeparrot-clean-train) первое "
+                        "заполнение буфера может зависать надолго; уменьшите до 100-500 "
+                        "для быстрого старта ценой менее качественного перемешивания).")
     return p.parse_args()
 
 
@@ -435,6 +440,8 @@ def main() -> int:
         full_cfg.train.use_torch_compile = args.compile
     if args.backup_dir is not None:
         full_cfg.train.backup_dir = args.backup_dir
+    if args.shuffle_buffer is not None:
+        full_cfg.dataset.shuffle_buffer = args.shuffle_buffer
     if args.micro_batch_size is not None:
         full_cfg.train.micro_batch_size = args.micro_batch_size
     if args.grad_accum_steps is not None:
