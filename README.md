@@ -80,8 +80,13 @@ pip install -r requirements.txt
 
 - [x] Architecture implemented and validated live (real forward/backward passes, finite decreasing loss)
 - [x] Tokenizer trained on a real 1.1GB EN+Code corpus, 65,536 vocab, round-trip verified on code/emoji/Unicode
-- [x] Training loop validated end-to-end on real streamed data + checkpoint resume (locally, reduced architecture)
-- [ ] Full-scale training run (needs Lightning.ai A100/T4 — local dev GPU is only 4GB)
+- [x] Training loop validated end-to-end on real streamed data + checkpoint resume (T4, reduced context 2048: loss 11.39→9.07 over 113 real steps)
+- [ ] Full-scale training run at ctx=8192 (needs A100 — confirmed T4 OOMs even at micro_batch=1 at full context)
+- [ ] Fast Mamba backend (`mamba_ssm`) integrated but not yet verified on GPU (see `verify_fast_mamba.py`)
+
+## Performance note
+
+The reference Mamba-2 implementation is pure PyTorch (no fused CUDA kernels) — measured throughput on T4 at ctx=2048 was **~164 tok/s**, far too slow for a real pretraining run (even the full ~77 T4-hours a small compute budget buys would only cover ~45M tokens, well short of the ~3.3B-token Chinchilla-minimum for this parameter count). `model.py` now optionally uses the official `mamba_ssm` fused backend when installed (`pip install mamba-ssm causal-conv1d`, Linux+CUDA only) — same architecture, just a faster internal implementation for the Mamba-2 blocks. **Run `python verify_fast_mamba.py` on a GPU box before trusting it for real training** — it hasn't been verified on hardware that can actually compile `mamba_ssm` yet.
 
 ## Known limitations
 

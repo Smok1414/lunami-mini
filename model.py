@@ -11,14 +11,29 @@ model.py — полная архитектура Lunami-Mini:
         - Контекст до 8192 токенов.
 
 Файл спроектирован так, чтобы работать «из коробки» в Google Colab (T4, fp16).
-Для максимальной скорости Mamba-2 можно подключить пакет mamba_ssm; здесь
-дается чистая, самостоятельная (зависит только от torch) и корректная
-реализация chunkwise selective scan, совместимая с autograd.
+Основная реализация Mamba-2 — чистый PyTorch (chunkwise selective scan, зависит
+только от torch, корректна и совместима с autograd), но она НЕ использует
+fused CUDA-кернели и на длинном контексте заметно медленнее референсных
+реализаций (см. mamba_use_fast в config.py).
+
+Быстрый бэкенд (опционально): если установлен официальный пакет `mamba_ssm`
+(+ `causal-conv1d`, требуют CUDA-компиляции, доступны на Linux с GPU — Lightning/
+Colab, не гарантированы на Windows), Mamba2Block автоматически использует
+`mamba_ssm.modules.mamba2.Mamba2` — тот же тип SSM-блока (тот же d_model на
+входе/выходе, то же место в [M,M,M,A]-паттерне), но с fused Triton/CUDA-кернелами
+вместо ручного Python-цикла. Архитектура модели (d_model, число слоёв, паттерн,
+GQA, MoE) при этом НЕ меняется — меняется только внутренняя реализация одного
+типа блока. Если пакет не установлен или конструктор бросает исключение (напр.
+несовпадение версии API) — тихий fallback на проверенную PyTorch-реализацию,
+никакого краша. ВАЖНО: быстрый бэкенд не тестировался автором локально (нет
+подходящего CUDA-окружения) — перед использованием в реальном обучении нужно
+прогнать verify_fast_mamba.py (см. соседний файл) на машине с GPU+mamba_ssm.
 """
 
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -26,6 +41,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import ModelConfig, SpecialTokens
+
+# ── Опциональный быстрый бэкенд Mamba-2 (официальные fused-кернели) ────────────────────
+# Требует: pip install mamba-ssm causal-conv1d (CUDA-компиляция, Linux+GPU).
+# Если недоступен — MAMBA_SSM_AVAILABLE=False, Mamba2Block молча использует
+# собственную PyTorch-реализацию (ssd_chunked ниже) без каких-либо изменений.
+try:
+    from mamba_ssm.modules.mamba2 import Mamba2 as _FusedMamba2
+    MAMBA_SSM_AVAILABLE = True
+except ImportError:
+    _FusedMamba2 = None
+    MAMBA_SSM_AVAILABLE = False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -259,29 +285,63 @@ class Mamba2Block(nn.Module):
         self.chunk = cfg.mamba_chunk_size
         self.use_fast = cfg.mamba_use_fast
 
-        self.in_proj = nn.Linear(d, 2 * d_inner, bias=cfg.use_bias)
-        # Групповая conv1d (depthwise) — независимый фильтр на каждый канал.
-        self.conv1d = nn.Conv1d(
-            d_inner, d_inner,
-            kernel_size=cfg.mamba_conv_kernel,
-            padding=cfg.mamba_conv_kernel - 1,
-            groups=d_inner,
-            bias=True,
-        )
-        # x_proj выход: dt (H) + B_t (D) + C_t (D). dt — на «голову», B/C — общие на головы.
-        self.x_proj = nn.Linear(d_inner, H + 2 * D, bias=False)
-        self.dt_proj = nn.Linear(H, H, bias=True)
+        # ── Быстрый бэкенд (официальный mamba_ssm), если доступен и запрошен ────
+        # Полностью заменяет внутренности блока (in_proj/conv1d/x_proj/dt_proj/
+        # A_log/D_param/out_proj) на официальный fused-модуль с ЭКВИВАЛЕНТНЫМИ
+        # гиперпараметрами (d_model/d_state/d_conv/expand/chunk_size те же самые
+        # значения из cfg) — вход/выход блока (B,L,d_model)→(B,L,d_model) не
+        # меняется, поэтому для MambaLayer/LunamiLM снаружи ничего не меняется.
+        # rmsnorm=False — чтобы не добавлять лишнюю норму, которой нет в нашей
+        # референсной реализации (иначе архитектура тихо изменилась бы).
+        self.fast_backend: Optional[nn.Module] = None
+        if self.use_fast and MAMBA_SSM_AVAILABLE:
+            try:
+                self.fast_backend = _FusedMamba2(
+                    d_model=d,
+                    d_state=D,
+                    d_conv=cfg.mamba_conv_kernel,
+                    expand=cfg.mamba_expand,
+                    headdim=D,
+                    chunk_size=self.chunk,
+                    bias=cfg.use_bias,
+                    rmsnorm=False,
+                    use_mem_eff_path=True,
+                )
+            except Exception as e:  # noqa: BLE001 — любая несовместимость версии → безопасный fallback
+                warnings.warn(
+                    f"mamba_ssm доступен, но инициализация быстрого бэкенда провалилась "
+                    f"({type(e).__name__}: {e}) — использую референсную PyTorch-реализацию.",
+                    RuntimeWarning,
+                )
+                self.fast_backend = None
 
-        # A_log — лог положительной матрицы перехода A (H, D). Инициализация s4d-linspace.
-        A_init = torch.arange(1, D + 1, dtype=torch.float32).repeat(H, 1)  # (H, D)
-        self.A_log = nn.Parameter(torch.log(A_init))
-        # D — параметр skip-связи на голову (скаляр).
-        self.D_param = nn.Parameter(torch.ones(H))
+        if self.fast_backend is None:
+            self.in_proj = nn.Linear(d, 2 * d_inner, bias=cfg.use_bias)
+            # Групповая conv1d (depthwise) — независимый фильтр на каждый канал.
+            self.conv1d = nn.Conv1d(
+                d_inner, d_inner,
+                kernel_size=cfg.mamba_conv_kernel,
+                padding=cfg.mamba_conv_kernel - 1,
+                groups=d_inner,
+                bias=True,
+            )
+            # x_proj выход: dt (H) + B_t (D) + C_t (D). dt — на «голову», B/C — общие на головы.
+            self.x_proj = nn.Linear(d_inner, H + 2 * D, bias=False)
+            self.dt_proj = nn.Linear(H, H, bias=True)
 
-        self.out_proj = nn.Linear(d_inner, d, bias=cfg.use_bias)
+            # A_log — лог положительной матрицы перехода A (H, D). Инициализация s4d-linspace.
+            A_init = torch.arange(1, D + 1, dtype=torch.float32).repeat(H, 1)  # (H, D)
+            self.A_log = nn.Parameter(torch.log(A_init))
+            # D — параметр skip-связи на голову (скаляр).
+            self.D_param = nn.Parameter(torch.ones(H))
+
+            self.out_proj = nn.Linear(d_inner, d, bias=cfg.use_bias)
 
     def forward(self, u: torch.Tensor) -> torch.Tensor:
         """u: (B, L, d_model) — уже нормализованный вход. → (B, L, d_model)."""
+        if self.fast_backend is not None:
+            return self.fast_backend(u)
+
         Bsz, L, _ = u.shape
         H, D, d_inner = self.H, self.D, self.d_inner
 

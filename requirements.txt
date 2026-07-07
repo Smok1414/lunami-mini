@@ -6,3 +6,9 @@ numpy>=1.24
 
 # optional — только если TrainConfig.use_wandb=True (train.py импортирует его защищённо)
 # wandb>=0.16
+
+# optional — быстрый fused-бэкенд Mamba-2 (требует CUDA-компиляции, Linux+GPU;
+# не гарантирован на Windows). Без них model.py молча использует свою PyTorch-
+# реализацию (см. verify_fast_mamba.py для проверки перед реальным обучением).
+# mamba-ssm>=2.2
+# causal-conv1d>=1.4
