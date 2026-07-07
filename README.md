@@ -1,49 +1,49 @@
 # Lunami-Mini
 
-Независимая LLM с нуля — не файнтюн и не обёртка над существующей моделью. Одна сфокусированная **English + Code** модель: гибрид Mamba-2 + GQA-Transformer + Mixture-of-Experts, ~165-170M активных параметров.
+An independent, from-scratch LLM — not a fine-tune, not a wrapper around an existing model. A single, focused **English + Code** model: hybrid Mamba-2 + GQA-Transformer + Mixture-of-Experts, ~165-170M active parameters.
 
-## Архитектура
+## Architecture
 
-- 24 слоя: `[Mamba, Mamba, Mamba, Attention] × 6` (75% Mamba-2 / 25% GQA-внимание)
-- `d_model=768`, контекст 8192 токенов
-- **Mamba-2**: state dim 64, expand 2, conv kernel 4 — chunkwise selective scan на чистом PyTorch (без зависимости от `mamba_ssm`)
-- **GQA-внимание**: 8 query heads / 2 KV heads, head_dim 96, RoPE, FlashAttention-2 (через `torch.scaled_dot_product_attention`)
-- **FFN**: Mixture-of-Experts — 8 SwiGLU-экспертов, top-2 роутинг, load-balancing aux loss
+- 24 layers: `[Mamba, Mamba, Mamba, Attention] × 6` (75% Mamba-2 / 25% GQA attention)
+- `d_model=768`, 8192-token context window
+- **Mamba-2**: state dim 64, expand 2, conv kernel 4 — chunkwise selective scan implemented in pure PyTorch (no `mamba_ssm` dependency)
+- **GQA attention**: 8 query heads / 2 KV heads, head_dim 96, RoPE, FlashAttention-2 (via `torch.scaled_dot_product_attention`)
+- **FFN**: Mixture-of-Experts — 8 SwiGLU experts, top-2 routing, load-balancing aux loss
 - RMSNorm, tied embeddings
-- Словарь: 65 536-токенный SentencePiece BPE (byte-fallback, ChatML-спецтокены)
-- ~165-170M активных параметров/токен, ~293M хранится всего (из-за MoE)
+- Vocabulary: 65,536-token SentencePiece BPE (byte-fallback, ChatML special tokens)
+- ~165-170M active parameters/token, ~293M total stored (due to MoE)
 
-## Структура проекта
+## Project structure
 
-| Файл | Роль |
+| File | Role |
 |---|---|
-| `config.py` | единый источник истины: гиперпараметры, спецтокены, датасеты, профили железа |
-| `model.py` | архитектура LunamiLM |
-| `tokenizer_train.py` | обучение SentencePiece BPE токенизатора |
-| `dataset.py` | стриминг + смешивание + упаковка датасетов HuggingFace, ChatML loss-маска |
-| `train.py` | цикл обучения (AMP, grad-аккумуляция, чекпойнты, resume) |
-| `chat.py` | инференс / REPL-чат |
+| `config.py` | single source of truth: hyperparameters, special tokens, datasets, hardware profiles |
+| `model.py` | LunamiLM architecture |
+| `tokenizer_train.py` | SentencePiece BPE tokenizer training |
+| `dataset.py` | HuggingFace dataset streaming, mixing, packing, ChatML loss masking |
+| `train.py` | training loop (AMP, gradient accumulation, checkpoints, resume) |
+| `chat.py` | inference / REPL chat |
 
-## Данные
+## Data
 
-v1 — только **English + Code**, без русского и прочих языков. Смесь 50/50:
+v1 is **English + Code only** — no Russian or other languages. 50/50 mix:
 
-| Источник | Роль | Вес |
+| Source | Role | Weight |
 |---|---|---|
 | [FineWeb-Edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) | English pretrain | 40% |
 | [codeparrot-clean-train](https://huggingface.co/datasets/codeparrot/codeparrot-clean-train) | Python pretrain | 40% |
 | [Magicoder-OSS-Instruct-75K](https://huggingface.co/datasets/ise-uiuc/Magicoder-OSS-Instruct-75K) | code instruct | 10% |
 | [OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5) | English chat | 10% |
 
-Все источники публичные — без gated-доступа и HF-токена (см. `config.default_dataset_sources()`).
+All sources are public — no gated access or HF token required (see `config.default_dataset_sources()`).
 
-## Профили железа
+## Hardware profiles
 
-Проект рассчитан на гибридную работу с Lightning.ai Studios — переключение одним флагом:
+Built for a hybrid Lightning.ai Studios workflow — switch with a single flag:
 
-| Профиль | GPU | dtype | батч | особенности |
+| Profile | GPU | dtype | batch | notes |
 |---|---|---|---|---|
-| `rocket` | A100 40GB | bf16 | 16×2 (eff. 32) | `torch.compile`, без grad-checkpointing |
+| `rocket` | A100 40GB | bf16 | 16×2 (eff. 32) | `torch.compile`, no grad-checkpointing |
 | `workhorse` | T4 15GB | fp16 | 2×8 (eff. 16) | GradScaler, gradient checkpointing |
 
 ```bash
@@ -51,43 +51,43 @@ python train.py --profile rocket      # A100
 python train.py --profile workhorse   # T4
 ```
 
-## Установка
+## Setup
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Использование
+## Usage
 
-1. **Обучить токенизатор** — положить English-текст и код в `tokenizer_corpus/`, затем:
+1. **Train the tokenizer** — put English text and code files into `tokenizer_corpus/`, then:
    ```bash
    python tokenizer_train.py
    ```
-   Создаёт `tokenizer/tokenizer.model` + `tokenizer/tokenizer.vocab`.
+   Produces `tokenizer/tokenizer.model` + `tokenizer/tokenizer.vocab`.
 
-2. **Обучить модель** (данные стримятся прямо с HuggingFace, скачивать вручную не нужно):
+2. **Train the model** (data streams directly from HuggingFace, no manual download needed):
    ```bash
-   python train.py --profile workhorse   # или rocket
+   python train.py --profile workhorse   # or rocket
    ```
-   Продолжить обучение: `python train.py --profile workhorse --resume checkpoints/step_5000.pt`
+   Resume training: `python train.py --profile workhorse --resume checkpoints/step_5000.pt`
 
-3. **Пообщаться с моделью**:
+3. **Chat with the model**:
    ```bash
    python chat.py --checkpoint checkpoints/step_50000.pt
    ```
 
-## Статус проекта
+## Project status
 
-- [x] Архитектура реализована и проверена вживую (реальные forward/backward, конечный убывающий loss)
-- [x] Токенизатор обучен на реальном корпусе 1.1GB EN+Code, словарь 65 536, round-trip проверен на коде/emoji/юникоде
-- [x] Цикл обучения проверен end-to-end на реальных стримингованных данных + resume чекпойнтов (локально, урезанная архитектура)
-- [ ] Полноценное обучение на полном масштабе (нужен Lightning.ai A100/T4 — локальная GPU разработки всего 4GB)
+- [x] Architecture implemented and validated live (real forward/backward passes, finite decreasing loss)
+- [x] Tokenizer trained on a real 1.1GB EN+Code corpus, 65,536 vocab, round-trip verified on code/emoji/Unicode
+- [x] Training loop validated end-to-end on real streamed data + checkpoint resume (locally, reduced architecture)
+- [ ] Full-scale training run (needs Lightning.ai A100/T4 — local dev GPU is only 4GB)
 
-## Известные ограничения
+## Known limitations
 
-- `model.py` не реализует инкрементальный KV-cache (параметр `use_cache` — заглушка) — генерация в `chat.py` идёт честным full-recompute. Настоящий кэш — будущая доработка, не входит в v1.
-- Разработка велась на потребительской GPU (RTX 2050, 4GB) — этого достаточно для проверки всей проводки (токенизатор + данные + обучение), но недостаточно для полноценного претрейна на целевом масштабе модели.
+- `model.py` does not implement an incremental KV-cache (the `use_cache` parameter is a stub) — generation in `chat.py` uses honest full-recompute. A real cache is future work, not part of v1.
+- Development was done on a consumer GPU (RTX 2050, 4GB) — enough to validate the full pipeline (tokenizer + data + training), but not enough for a full pretraining run at the model's target scale.
 
-## Лицензия
+## License
 
-MIT — см. [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
