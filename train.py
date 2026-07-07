@@ -82,6 +82,10 @@ def parse_args() -> argparse.Namespace:
                    help="Принудительно включить torch.compile().")
     p.add_argument("--no-compile", dest="compile", action="store_false",
                    help="Принудительно выключить torch.compile().")
+    p.add_argument("--backup-dir", type=str, default=None,
+                   help="Копировать каждый чекпойнт сюда (напр. /content/drive/MyDrive/... "
+                        "в Colab — сессия там не персистентна, чекпойнты в output_dir пропадут "
+                        "при отключении рантайма).")
     return p.parse_args()
 
 
@@ -424,6 +428,8 @@ def main() -> int:
         full_cfg.train.total_steps = args.max_steps
     if args.compile is not None:
         full_cfg.train.use_torch_compile = args.compile
+    if args.backup_dir is not None:
+        full_cfg.train.backup_dir = args.backup_dir
 
     train(full_cfg, args)
     return 0
