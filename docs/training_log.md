@@ -35,19 +35,25 @@ Loss decreases monotonically, gradient norms stay bounded, LR warmup matches its
 
 **Honest number for the day:** at ~330 tok/s, the realistic compute budget available for this project caps out around 90M tokens total — well short of what a 165M-active-parameter model would need for genuinely coherent output. Full reasoning in [roadmap.md](roadmap.md#compute).
 
-**Production run progress** (same config as above, updated as it runs):
+**Production run progress** (same config as above, updated as it runs). Logged every 5 steps early on to confirm stability; now sampled at coarser milestones since the loss trend is well established and a dense table stops being readable past a few hundred steps:
 
 | Step | Loss | tok/s | Time |
 |---|---|---|---|
 | 5 | 11.3929 | 331 | 18:40 |
-| 35 | 10.6994 | 328 | 19:05 |
-| 40 | 10.7763 | 328 | 19:09 |
-| 45 | 10.5630 | 329 | 19:13 |
 | 50 | 10.3655 | 327 | 19:18 |
-| 55 | 10.1877 | 328 | 19:22 |
-| 60 | 9.9713 | 328 | 19:26 |
-| 65 | 9.9841 | 328 | 19:30 |
-| 70 | 9.9954 | 328 | 19:34 |
-| 75 | 9.7208 | 328 | 19:38 |
+| 100 | 9.5078 | 329 | 19:59 |
+| 150 | 8.5769 | 330 | 20:40 |
+| 300 | 6.7922 | 333 | 22:50 |
+| 400 | 6.6307 | 334 | 00:11 |
+| 500 | 5.7071 | 334 | 01:33 |
+| 600 | 6.3581 | 334 | 02:54 |
+| 690 | 5.7676 | 334 | 04:04 |
 
-Small non-monotonic bumps (step 40, step 65-70) are normal noise at this effective batch size (8) — the overall trend across 70 steps is a clean decrease. Throughput is flat at ~328 tok/s, matching the earlier measurement almost exactly. Checkpoints saved every 15 steps to `checkpoints/`.
+Loss is noisy step-to-step at this effective batch size (8) — e.g. step 570 briefly hit 4.6926 before bouncing back to 5.9252 the next step, and 600 (6.3581) reads worse than 500 (5.7071) despite being later — but the milestone-to-milestone trend is a clean drop from ~11.4 to the 5.7-6.4 range. Throughput crept up from ~328 to ~334 tok/s as the run progressed. Checkpoints saved every 15 steps to `checkpoints/`.
+
+**First held-out eval, step 500:** `val_loss 6.3970 | val_ppl 600.06` — noticeably worse than the training loss at that point (5.7071 / ppl ~301). Expected this early: with ~90M realistic tokens against a ~3.3B Chinchilla-minimum, the model is still mostly memorizing local statistics of the training stream rather than generalizing, so a train/val gap this size isn't a red flag yet — just a number to watch as training continues.
+
+Sampled `chat.py` at three points to track qualitative progress (full outputs in [Samples](../README.md#samples)):
+- **Step 30** (~500K tokens): pure noise, broken tokenizer artifacts (`HashMark`, `substitutingIUS`).
+- **Step 150** (~2.5M tokens): real whole words, no grammar (`situated`, `insects`, `emphasizes`).
+- **Step 675** (~11M tokens): short but genuinely grammatical fragments (`This year is an important part of`) — still semantically empty, but subject-verb-object structure is starting to show up.

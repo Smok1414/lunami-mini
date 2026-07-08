@@ -65,12 +65,16 @@ Validation run on a T4, context length 2048, single data source (see [docs/train
 | Step | Loss | Perplexity | tok/s |
 |---|---|---|---|
 | 5 | 11.3929 | ~88,700 | 331 |
-| 35 | 10.6994 | ~44,300 | 328 |
-| 45 | 10.5630 | ~38,700 | 329 |
-| 60 | 9.9713 | ~21,400 | 328 |
-| 75 | 9.7208 | ~16,700 | 328 |
+| 50 | 10.3655 | ~31,700 | 327 |
+| 100 | 9.5078 | ~13,500 | 329 |
+| 150 | 8.5769 | ~5,310 | 330 |
+| 300 | 6.7922 | ~891 | 333 |
+| 400 | 6.6307 | ~758 | 334 |
+| 500 | 5.7071 | ~301 | 334 |
+| 600 | 6.3581 | ~577 | 334 |
+| 690 | 5.7676 | ~320 | 334 |
 
-Throughput is holding steady at ~328-331 tok/s; loss is trending down with the normal noise expected at this batch size (effective batch 8). Updated as training continues — see [docs/training_log.md](docs/training_log.md) for the full step-by-step record.
+Perplexity has dropped roughly two orders of magnitude from step 5 to step 690, though not monotonically — batch-size-8 noise means individual milestones can read worse than an earlier one (step 600 vs. 500). First held-out validation eval, at step 500: `val_ppl 600.06`, about 2x the training perplexity at the same step — an expected train/val gap this early, not a red flag. Throughput has crept up from ~328 to ~334 tok/s over the run. Updated as training continues — see [docs/training_log.md](docs/training_log.md) for the full record.
 
 ## Samples
 
@@ -78,6 +82,16 @@ Real output from a real checkpoint, not cherry-picked or edited. Step 30 (~500K 
 
 > **Prompt:** `Hello, how are you?`
 > **Output:** `Blog HashMark Thailanductakachronouslytoo retailer Bytes substitutingIUS filetypegarhcardProvision Claim decadecuits thymDatagram inaccur Chryschief andutions InvenioOutOfRange bargaining [...]`
+
+Step 150 (~2.5M tokens of training) — loss has dropped from ~11.4 to ~8.6, but output is still noise, just noise built from more common English word fragments:
+
+> **Prompt:** `Hello, how are you?`
+> **Output:** `situated to the portraits defines). noted Africa insects. orsubparsers emphasizes thatun test of the...Jresponse Firstadding billions better also and and teachings Court in express Food._ standard as developedturned Lub. calls colonies of the7 voted`
+
+Step 675 (~11M tokens of training) — still no coherent meaning, but short grammatical fragments are starting to show up (`This year is an important part of` is a complete, correctly-formed clause):
+
+> **Prompt:** `Hello, how are you?`
+> **Output:** `on the same (for 1984). The Catholic. The oldest-27-79993-65 (1) is a day in the first 2009. This year is an important part of`
 
 This section will be updated with later checkpoints as training progresses — see [docs/training_log.md](docs/training_log.md) for the running record.
 
