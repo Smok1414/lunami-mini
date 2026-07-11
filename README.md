@@ -93,6 +93,11 @@ Step 675 (~11M tokens of training) — still no coherent meaning, but short gram
 > **Prompt:** `Hello, how are you?`
 > **Output:** `on the same (for 1984). The Catholic. The oldest-27-79993-65 (1) is a day in the first 2009. This year is an important part of`
 
+Step 3150 (~100M tokens of training, ctx=2048) — still not a coherent reply, but real Python syntax is showing up intact (import → class → docstring, in the right order):
+
+> **Prompt:** `Hello, how are you?`
+> **Output:** `Each person? Should you?  """  # get the main module # from __future__ import print_function  import re  from ansible.module_utils.six import AnsibleModule  class types(object):     """     A version class for`
+
 This section will be updated with later checkpoints as training progresses — see [docs/training_log.md](docs/training_log.md) for the running record.
 
 ## Data

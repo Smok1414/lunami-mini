@@ -49,11 +49,27 @@ Loss decreases monotonically, gradient norms stay bounded, LR warmup matches its
 | 600 | 6.3581 | 334 | 02:54 |
 | 690 | 5.5810 | 334 | 04:08 |
 
-Loss is noisy step-to-step at this effective batch size (8) — e.g. step 570 briefly hit 4.6926 before bouncing back to 5.9252 the next step, and 600 (6.3581) reads worse than 500 (5.7071) despite being later — but the milestone-to-milestone trend is a clean drop from ~11.4 to the 5.7-6.4 range. Throughput crept up from ~328 to ~334 tok/s as the run progressed. Checkpoints saved every 15 steps to `checkpoints/`.
+Loss is noisy step-to-step at this effective batch size (16) — e.g. step 570 briefly hit 4.6926 before bouncing back to 5.9252 the next step, and 600 (6.3581) reads worse than 500 (5.7071) despite being later — but the milestone-to-milestone trend is a clean drop from ~11.4 to the 5.7-6.4 range. Throughput crept up from ~328 to ~334 tok/s as the run progressed. Checkpoints saved every 15 steps to `checkpoints/`.
 
 **First held-out eval, step 500:** `val_loss 6.3970 | val_ppl 600.06` — noticeably worse than the training loss at that point (5.7071 / ppl ~301). Expected this early: with ~90M realistic tokens against a ~3.3B Chinchilla-minimum, the model is still mostly memorizing local statistics of the training stream rather than generalizing, so a train/val gap this size isn't a red flag yet — just a number to watch as training continues.
 
-Sampled `chat.py` at three points to track qualitative progress (full outputs in [Samples](../README.md#samples)):
+Sampled `chat.py` at four points to track qualitative progress (full outputs in [Samples](../README.md#samples)):
 - **Step 30** (~500K tokens): pure noise, broken tokenizer artifacts (`HashMark`, `substitutingIUS`).
 - **Step 150** (~2.5M tokens): real whole words, no grammar (`situated`, `insects`, `emphasizes`).
 - **Step 675** (~11M tokens): short but genuinely grammatical fragments (`This year is an important part of`) — still semantically empty, but subject-verb-object structure is starting to show up.
+- **Step 3150** (~100M tokens): real Python syntax intact — `import` → `class` → docstring, in the right order. See below.
+
+## Day 2 — Lightning.ai credits ran out, moved to Colab
+
+Training continued past step 690 on Lightning.ai up to **step 3150** (no per-5-step log kept for this stretch — the run was left going, not actively watched). Lightning.ai's free compute ran out around there, so the plan was to resume on Google Colab instead. This surfaced two separate bugs that had never been exercised before because the run had never previously been interrupted and resumed on different hardware:
+
+**Broke:** `torch.load(args.resume, map_location=device, ...)` loaded the full checkpoint (weights + Adam optimizer state — 2x the model size) directly onto GPU, at the same moment the freshly-constructed model and optimizer were already resident there. Two full copies in memory at once, briefly. Fine on Lightning.ai's T4 (enough headroom), but a real `CUDA out of memory` on Colab's T4 (less free memory available). Fixed by loading to CPU first and letting `load_state_dict` copy into the already-allocated GPU tensors — see [train.py](../train.py).
+
+**Broke, the sneaky one:** resumed cleanly after that fix, got through data loading, then died with `CUDA out of memory: Tried to allocate 4.00 GiB` inside `F.cross_entropy`. `ModelConfig.max_seq_len` defaults to 8192 in `config.py`, and neither hardware profile (`rocket`/`workhorse`) overrides it — so a fresh clone on Colab silently trained at full 8192 context, which [roadmap.md](roadmap.md#compute) already documents as not fitting a T4 even at `micro_batch_size=1`. The math checks out exactly: `2 × 8192 × 65536 × 4 bytes = 4.00 GiB`, the exact allocation the error reported. Every checkpoint so far was actually trained at `max_seq_len=2048`; that just wasn't enforceable from the CLI. Added a `--max-seq-len` flag so this doesn't require hand-editing `config.py` again.
+
+**Sample, step 3150.pt** (~100M tokens at ctx=2048 — first checkpoint tested past the ~90M-token "honest" budget from Day 1, and still going):
+
+> **Prompt:** `Hello, how are you?`
+> **Output:** `Each person? Should you?  """  # get the main module # from __future__ import print_function  import re  from ansible.module_utils.six import AnsibleModule  class types(object):     """     A version class for`
+
+Still not a coherent reply, but a clear step up from step 675: two well-formed (if non-sequitur) questions, followed by genuinely correct Python structure — `from __future__ import ...`, `import re`, then a class definition with a docstring, in the order real Python files actually use them. First clear sign the `codeparrot-clean` half of the data mix is landing.
