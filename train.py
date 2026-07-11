@@ -318,13 +318,20 @@ def train(full_cfg: LunamiConfig, args: argparse.Namespace) -> None:
     start_step = 0
     if args.resume:
         logger.info("Возобновление из %s ...", args.resume)
+        # map_location="cpu": модель/оптимизатор уже созданы на GPU, поэтому чекпойнт
+        # грузим на CPU и копируем через load_state_dict — иначе на секунду в памяти
+        # GPU оказываются две полные копии весов+состояния Adam разом (риск CUDA OOM
+        # именно при возобновлении, когда свободной памяти и так впритык на T4).
         # weights_only=False: это НАШ доверенный чекпойнт (содержит конфиг-словарь, не только веса).
-        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
         raw_model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         scheduler.load_state_dict(ckpt["scheduler"])
         scaler.load_state_dict(ckpt["scaler"])
         start_step = int(ckpt["step"]) + 1
+        del ckpt
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
         logger.info("Возобновлено со шага %d.", start_step)
 
     # ── сохраняем конфиг рядом с чекпойнтами ──────────────────────────────────
