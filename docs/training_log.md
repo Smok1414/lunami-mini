@@ -47,7 +47,7 @@ Loss decreases monotonically, gradient norms stay bounded, LR warmup matches its
 | 400 | 6.6307 | 334 | 00:11 |
 | 500 | 5.7071 | 334 | 01:33 |
 | 600 | 6.3581 | 334 | 02:54 |
-| 690 | 5.7676 | 334 | 04:04 |
+| 690 | 5.5810 | 334 | 04:08 |
 
 Loss is noisy step-to-step at this effective batch size (8) — e.g. step 570 briefly hit 4.6926 before bouncing back to 5.9252 the next step, and 600 (6.3581) reads worse than 500 (5.7071) despite being later — but the milestone-to-milestone trend is a clean drop from ~11.4 to the 5.7-6.4 range. Throughput crept up from ~328 to ~334 tok/s as the run progressed. Checkpoints saved every 15 steps to `checkpoints/`.
 

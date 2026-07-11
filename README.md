@@ -72,7 +72,7 @@ Validation run on a T4, context length 2048, single data source (see [docs/train
 | 400 | 6.6307 | ~758 | 334 |
 | 500 | 5.7071 | ~301 | 334 |
 | 600 | 6.3581 | ~577 | 334 |
-| 690 | 5.7676 | ~320 | 334 |
+| 690 | 5.5810 | ~265 | 334 |
 
 Perplexity has dropped roughly two orders of magnitude from step 5 to step 690, though not monotonically — batch-size-8 noise means individual milestones can read worse than an earlier one (step 600 vs. 500). First held-out validation eval, at step 500: `val_ppl 600.06`, about 2x the training perplexity at the same step — an expected train/val gap this early, not a red flag. Throughput has crept up from ~328 to ~334 tok/s over the run. Updated as training continues — see [docs/training_log.md](docs/training_log.md) for the full record.
 
