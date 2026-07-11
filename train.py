@@ -96,6 +96,11 @@ def parse_args() -> argparse.Namespace:
                         "на некоторых огромных HF-шардах (codeparrot-clean-train) первое "
                         "заполнение буфера может зависать надолго; уменьшите до 100-500 "
                         "для быстрого старта ценой менее качественного перемешивания).")
+    p.add_argument("--max-seq-len", type=int, default=None,
+                   help="Переопределить ModelConfig.max_seq_len (по умолчанию 8192 — не влезает "
+                        "на T4 даже при micro_batch_size=1, см. roadmap.md#compute). Все "
+                        "чекпойнты этого проекта на T4 обучались с 2048 — используйте это "
+                        "значение при --profile workhorse, если не меняли профиль вручную.")
     return p.parse_args()
 
 
@@ -449,6 +454,8 @@ def main() -> int:
         full_cfg.train.backup_dir = args.backup_dir
     if args.shuffle_buffer is not None:
         full_cfg.dataset.shuffle_buffer = args.shuffle_buffer
+    if args.max_seq_len is not None:
+        full_cfg.model.max_seq_len = args.max_seq_len
     if args.micro_batch_size is not None:
         full_cfg.train.micro_batch_size = args.micro_batch_size
     if args.grad_accum_steps is not None:
